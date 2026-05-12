@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"log"
 	"time"
 
 	config "github.com/EvolutionAPI/evolution-go/pkg/config"
@@ -1691,7 +1692,9 @@ func mapKeyType(keyType string) string {
 }
 
 func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
-	client, err := s.ensureClientConnected(instance.Id)
+	_, err := s.ensureClientConnected(instance.Id)
+	log.Println("🔥 BUILD NOVO ATIVO 🔥")
+
 	if err != nil {
 		return nil, err
 	}
@@ -1702,7 +1705,7 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 	replyCount := 0
 
 	for _, v := range data.Buttons {
-		switch v.Type {
+		switch strings.ToLower(v.Type) {
 		case "reply":
 			hasReply = true
 			replyCount++
@@ -1715,161 +1718,114 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 
 	if hasReply {
 		if replyCount > 3 {
-			return nil, errors.New("máximo de 3 botões do tipo 'reply' permitidos")
+			return nil, errors.New("máximo de 3 botões reply")
 		}
 		if hasOtherTypes {
-			return nil, errors.New("botões do tipo 'reply' não podem ser misturados com outros tipos")
+			return nil, errors.New("não misturar reply com outros tipos")
 		}
 	}
 
 	if hasPix {
 		if len(data.Buttons) > 1 {
-			return nil, errors.New("botão do tipo 'pix' não pode ser combinado com outros botões")
+			return nil, errors.New("pix não pode combinar")
 		}
 	}
 
 	buttons := []*waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{}
 
 	for _, v := range data.Buttons {
-		var paramsJSON *string
+		var paramsJSON string
+		var name string
 
-		var name *string
+		switch strings.ToUpper(v.Type) {
+		case "REPLY":
+			name = "quick_reply"
+			paramsJSON = fmt.Sprintf(
+				`{"display_text":"%s","id":"%s"}`,
+				v.DisplayText,
+				v.Id,
+			)
 
-		switch v.Type {
-		case "reply":
-			name = proto.String("quick_reply")
-			paramsJSON = proto.String(`{"display_text":"` + v.DisplayText + `","id":"` + v.Id + `"}`)
-		case "copy":
-			name = proto.String("cta_copy")
-			paramsJSON = proto.String(`{"display_text":"` + v.DisplayText + `","copy_code":"` + v.CopyCode + `"}`)
-		case "url":
-			name = proto.String("cta_url")
-			paramsJSON = proto.String(`{"display_text":"` + v.DisplayText + `","url":"` + v.URL + `","merchant_url":"` + v.URL + `"}`)
-		case "call":
-			name = proto.String("cta_call")
-			paramsJSON = proto.String(`{"display_text":"` + v.DisplayText + `","phone_number":"` + v.PhoneNumber + `"}`)
-		case "pix":
-			randomId := utils.GenerateRandomString(11)
-			name = proto.String("payment_info")
-			paramsJSON = proto.String(`{"currency":"` + v.Currency + `","total_amount":{"value":0,"offset":100},"reference_id":"` + randomId + `","type":"physical-goods","order":{"status":"pending","subtotal":{"value":0,"offset":100},"order_type":"ORDER","items":[{"name":"","amount":{"value":0,"offset":100},"quantity":0,"sale_amount":{"value":0,"offset":100}}]},"payment_settings":[{"type":"pix_static_code","pix_static_code":{"merchant_name":"` + v.Name + `","key":"` + v.Key + `","key_type":"` + mapKeyType(v.KeyType) + `"}}],"share_payment_status":false}`)
+		case "COPY":
+			name = "cta_copy"
+			paramsJSON = fmt.Sprintf(
+				`{"display_text":"%s","copy_code":"%s"}`,
+				v.DisplayText,
+				v.CopyCode,
+			)
+
+		case "URL":
+			name = "cta_url"
+			paramsJSON = fmt.Sprintf(
+				`{"display_text":"%s","url":"%s"}`,
+				v.DisplayText,
+				v.Id,
+			)
+
+		case "CALL":
+			name = "cta_call"
+			paramsJSON = fmt.Sprintf(
+				`{"display_text":"%s","phone_number":"%s"}`,
+				v.DisplayText,
+				v.Id,
+			)
+
+		default:
+			return nil, fmt.Errorf("tipo inválido: %s", v.Type)
 		}
 
 		buttons = append(buttons, &waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
-			Name:             name,
-			ButtonParamsJSON: paramsJSON,
+			Name:             proto.String(name),
+			ButtonParamsJSON: proto.String(paramsJSON),
 		})
 	}
 
-	messageId := client.GenerateMessageID()
-	templateId := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
-	messageParamsJSON := `{"from":"api","templateId":` + templateId + `}`
-
-	var msg *waE2E.Message
-
-	if hasPix {
-		msg = &waE2E.Message{
-			InteractiveMessage: &waE2E.InteractiveMessage{
-				InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
-					NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
-						Buttons:           buttons,
-						MessageParamsJSON: &messageParamsJSON,
-					},
-				},
-			},
-		}
-	} else {
-		body := func() string {
-			t := "*" + data.Title + "*"
-			if data.Description != "" {
-				t += "\n\n" + data.Description + "\n"
-			}
-			return t
-		}()
-
-		interactiveMsg := &waE2E.InteractiveMessage{
-			Body: &waE2E.InteractiveMessage_Body{
-				Text: &body,
-			},
-			InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
-				NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
-					Buttons:           buttons,
-					MessageParamsJSON: &messageParamsJSON,
-					MessageVersion:    proto.Int32(1),
-				},
-			},
-			ContextInfo: &waE2E.ContextInfo{},
-		}
-
-		// Footer conditional - only add if not empty (iOS compatibility)
-		if data.Footer != "" {
-			interactiveMsg.Footer = &waE2E.InteractiveMessage_Footer{
-				Text: &data.Footer,
-			}
-		}
-
-		// Header with title
-		if data.Title != "" {
-			interactiveMsg.Header = &waE2E.InteractiveMessage_Header{
-				Title:              proto.String(data.Title),
-				HasMediaAttachment: proto.Bool(false),
-			}
-		}
-
-		msg = &waE2E.Message{
-			InteractiveMessage: interactiveMsg,
-		}
+	bodyText := "*" + data.Title + "*"
+	if data.Description != "" {
+		bodyText += "\n\n" + data.Description
 	}
 
-	recipient, err := s.validateAndCheckUserExists(data.Number, data.FormatJid, &data.Quoted.MessageID, &data.Quoted.MessageID, instance)
-	if err != nil {
-		s.loggerWrapper.GetLogger(instance.Id).LogError("[%s] Error validating message fields or user check: %v", instance.Id, err)
-		return nil, err
+	interactiveMsg := &waE2E.InteractiveMessage{
+		Body: &waE2E.InteractiveMessage_Body{
+			Text: proto.String(bodyText),
+		},
+		Footer: &waE2E.InteractiveMessage_Footer{
+			Text: proto.String(data.Footer),
+		},
+		Header: &waE2E.InteractiveMessage_Header{
+			Title:              proto.String(data.Title),
+			HasMediaAttachment: proto.Bool(false),
+		},
+		InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
+			NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
+				Buttons: buttons,
+			},
+		},
+		ContextInfo: &waE2E.ContextInfo{},
 	}
 
-	if data.Delay > 0 {
-		err := client.SendChatPresence(context.Background(), recipient, types.ChatPresence("composing"), types.ChatPresenceMedia(""))
-		if err != nil {
-			return nil, err
-		}
-
-		time.Sleep(time.Duration(data.Delay) * time.Millisecond)
-
-		err = client.SendChatPresence(context.Background(), recipient, types.ChatPresence("paused"), types.ChatPresenceMedia(""))
-		if err != nil {
-			return nil, err
-		}
+	msg := &waE2E.Message{
+		InteractiveMessage: interactiveMsg,
+		MessageContextInfo: &waE2E.MessageContextInfo{
+			DeviceListMetadata: &waE2E.DeviceListMetadata{},
+		},
 	}
 
-	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageId})
+	message, err := s.SendMessage(instance, msg, "InteractiveMessage", &SendDataStruct{
+		Number:    data.Number,
+		Delay:     data.Delay,
+		FormatJid: data.FormatJid,
+		Quoted:    data.Quoted,
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	messageInfo := types.MessageInfo{
-		MessageSource: types.MessageSource{
-			Chat:     recipient,
-			Sender:   *client.Store.ID,
-			IsFromMe: true,
-			IsGroup:  false,
-		},
-		ID:        messageId,
-		Timestamp: time.Now(),
-		ServerID:  response.ServerID,
-		Type:      "ButtonMessage",
-	}
-
-	messageSent := &MessageSendStruct{
-		Info:    messageInfo,
-		Message: msg,
-		MessageContextInfo: &waE2E.ContextInfo{
-			StanzaID:      proto.String(data.Quoted.MessageID),
-			Participant:   proto.String(data.Quoted.Participant),
-			QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
-		},
-	}
-
-	return messageSent, nil
+	return message, nil
 }
+
+
 
 func stringPointer(s string) *string {
 	return &s
@@ -2021,7 +1977,8 @@ func (s *sendService) SendList(data *ListStruct, instance *instance_model.Instan
 func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.Message, messageType string, data *SendDataStruct) (*MessageSendStruct, error) {
 	s.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] SendMessage called for number: %s, type: %s", instance.Id, data.Number, messageType)
 
-	recipient, err := s.validateAndCheckUserExists(data.Number, data.FormatJid, &data.Quoted.MessageID, &data.Quoted.MessageID, instance)
+recipient, err := s.validateAndCheckUserExists(data.Number, data.FormatJid, &data.Quoted.MessageID, &data.Quoted.Participant, instance)
+
 	if err != nil {
 		s.loggerWrapper.GetLogger(instance.Id).LogError("[%s] Error validating message fields or user check: %v", instance.Id, err)
 		return nil, err
