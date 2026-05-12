@@ -1780,9 +1780,9 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		})
 	}
 
-	bodyText := "*" + data.Title + "*"
-	if data.Description != "" {
-		bodyText += "\n\n" + data.Description
+	bodyText := data.Description
+	if bodyText == "" {
+		bodyText = " "
 	}
 
 	interactiveMsg := &waE2E.InteractiveMessage{
