@@ -1834,18 +1834,10 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		})
 	}
 
-	bodyText := data.Description
-	if bodyText == "" {
-		bodyText = " "
-	}
+	bodyText := strings.TrimSpace(data.Description)
+	footerText := strings.TrimSpace(data.Footer)
 
 	interactiveMsg := &waE2E.InteractiveMessage{
-		Body: &waE2E.InteractiveMessage_Body{
-			Text: proto.String(bodyText),
-		},
-		Footer: &waE2E.InteractiveMessage_Footer{
-			Text: proto.String(data.Footer),
-		},
 		Header: &waE2E.InteractiveMessage_Header{
 			Title:              proto.String(data.Title),
 			HasMediaAttachment: proto.Bool(false),
@@ -1856,6 +1848,18 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 			},
 		},
 		ContextInfo: &waE2E.ContextInfo{},
+	}
+
+	if !hasPix || bodyText != "" {
+		interactiveMsg.Body = &waE2E.InteractiveMessage_Body{
+			Text: proto.String(bodyText),
+		}
+	}
+
+	if !hasPix || footerText != "" {
+		interactiveMsg.Footer = &waE2E.InteractiveMessage_Footer{
+			Text: proto.String(footerText),
+		}
 	}
 
 	msg := &waE2E.Message{
