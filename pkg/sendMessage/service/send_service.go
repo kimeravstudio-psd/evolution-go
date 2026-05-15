@@ -1708,7 +1708,7 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 
 	for _, v := range data.Buttons {
 		switch strings.ToLower(v.Type) {
-		case "reply":
+		case "reply", "reply_legacy":
 			hasReply = true
 			replyCount++
 		case "pix":
@@ -1731,6 +1731,50 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		if len(data.Buttons) > 1 {
 			return nil, errors.New("pix não pode combinar")
 		}
+	}
+
+	legacyReplyCount := 0
+	for _, v := range data.Buttons {
+		if strings.ToLower(v.Type) == "reply_legacy" {
+			legacyReplyCount++
+		}
+	}
+
+	if legacyReplyCount > 0 {
+		if legacyReplyCount != len(data.Buttons) {
+			return nil, errors.New("não misturar reply_legacy com outros tipos")
+		}
+		if legacyReplyCount > 3 {
+			return nil, errors.New("máximo de 3 botões reply_legacy")
+		}
+
+		legacyButtons := []*waE2E.ButtonsMessage_Button{}
+		for _, v := range data.Buttons {
+			legacyButtons = append(legacyButtons, &waE2E.ButtonsMessage_Button{
+				ButtonID: proto.String(v.Id),
+				ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
+					DisplayText: proto.String(v.DisplayText),
+				},
+				Type: waE2E.ButtonsMessage_Button_RESPONSE.Enum(),
+			})
+		}
+
+		msg := &waE2E.Message{
+			ButtonsMessage: &waE2E.ButtonsMessage{
+				ContentText: proto.String(data.Description),
+				FooterText:  proto.String(data.Footer),
+				Buttons:     legacyButtons,
+				HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
+				ContextInfo: &waE2E.ContextInfo{},
+			},
+		}
+
+		return s.SendMessage(instance, msg, "ButtonsMessage", &SendDataStruct{
+			Number:    data.Number,
+			Delay:     data.Delay,
+			FormatJid: data.FormatJid,
+			Quoted:    data.Quoted,
+		})
 	}
 
 	buttons := []*waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{}
