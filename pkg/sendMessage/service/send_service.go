@@ -1708,7 +1708,7 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 
 	for _, v := range data.Buttons {
 		switch strings.ToLower(v.Type) {
-		case "reply", "reply_legacy":
+		case "reply", "reply_legacy", "template_legacy":
 			hasReply = true
 			replyCount++
 		case "pix":
@@ -1731,6 +1731,61 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		if len(data.Buttons) > 1 {
 			return nil, errors.New("pix não pode combinar")
 		}
+	}
+
+	templateLegacyCount := 0
+	for _, v := range data.Buttons {
+		if strings.ToLower(v.Type) == "template_legacy" {
+			templateLegacyCount++
+		}
+	}
+
+	if templateLegacyCount > 0 {
+		if templateLegacyCount != len(data.Buttons) {
+			return nil, errors.New("não misturar template_legacy com outros tipos")
+		}
+		if templateLegacyCount > 3 {
+			return nil, errors.New("máximo de 3 botões template_legacy")
+		}
+
+		hydratedButtons := []*waE2E.HydratedTemplateButton{}
+		for i, v := range data.Buttons {
+			idx := uint32(i + 1)
+			hydratedButtons = append(hydratedButtons, &waE2E.HydratedTemplateButton{
+				Index: proto.Uint32(idx),
+				HydratedButton: &waE2E.HydratedTemplateButton_QuickReplyButton{
+					QuickReplyButton: &waE2E.HydratedTemplateButton_HydratedQuickReplyButton{
+						DisplayText: proto.String(v.DisplayText),
+						ID:          proto.String(v.Id),
+					},
+				},
+			})
+		}
+
+		template := &waE2E.TemplateMessage_HydratedFourRowTemplate{
+			Title: &waE2E.TemplateMessage_HydratedFourRowTemplate_HydratedTitleText{
+				HydratedTitleText: data.Title,
+			},
+			HydratedContentText: proto.String(data.Description),
+			HydratedFooterText:  proto.String(data.Footer),
+			HydratedButtons:     hydratedButtons,
+		}
+
+		msg := &waE2E.Message{
+			TemplateMessage: &waE2E.TemplateMessage{
+				Format: &waE2E.TemplateMessage_HydratedFourRowTemplate_{
+					HydratedFourRowTemplate: template,
+				},
+				HydratedTemplate: template,
+			},
+		}
+
+		return s.SendMessage(instance, msg, "InteractiveMessage", &SendDataStruct{
+			Number:    data.Number,
+			Delay:     data.Delay,
+			FormatJid: data.FormatJid,
+			Quoted:    data.Quoted,
+		})
 	}
 
 	legacyReplyCount := 0
