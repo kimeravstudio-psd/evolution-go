@@ -1675,7 +1675,7 @@ func (s *sendService) SendContact(data *ContactStruct, instance *instance_model.
 }
 
 func mapKeyType(keyType string) string {
-	switch keyType {
+	switch strings.ToLower(keyType) {
 	case "phone":
 		return "PHONE"
 	case "email":
@@ -1684,10 +1684,10 @@ func mapKeyType(keyType string) string {
 		return "CPF"
 	case "cnpj":
 		return "CNPJ"
-	case "random":
+	case "random", "evp":
 		return "EVP"
 	default:
-		return keyType
+		return strings.ToUpper(keyType)
 	}
 }
 
@@ -1738,6 +1738,7 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		var name string
 
 		switch strings.ToUpper(v.Type) {
+
 		case "REPLY":
 			name = "quick_reply"
 			paramsJSON = fmt.Sprintf(
@@ -1767,6 +1768,59 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 			paramsJSON = fmt.Sprintf(
 				`{"display_text":"%s","phone_number":"%s"}`,
 				v.DisplayText,
+				v.Id,
+			)
+
+		case "PIX":
+			name = "payment_info"
+
+			paramsJSON = fmt.Sprintf(`{
+				"reference_id":"%s",
+				"type":"physical-goods",
+				"payment_configuration":"merchant_categorization_code",
+				"payment_settings":[
+					{
+						"type":"pix_static_code",
+						"pix_static_code":{
+							"merchant_name":"%s",
+							"key":"%s",
+							"key_type":"%s"
+						}
+					}
+				],
+				"currency":"%s",
+				"total_amount":{
+					"value":0,
+					"offset":1000
+				},
+				"order_request_id":"%s",
+				"order":{
+					"status":"payment_requested",
+					"items":[
+						{
+							"quantity":1,
+							"retailer_id":"%s",
+							"amount":{
+								"offset":1000,
+								"value":0
+							},
+							"name":"Pagamento PIX",
+							"isCustomItem":true,
+							"isQuantitySet":true
+						}
+					],
+					"subtotal":{
+						"value":0,
+						"offset":1000
+					}
+				}
+			}`,
+				v.Id,
+				v.Name,
+				v.Key,
+				strings.ToUpper(mapKeyType(v.KeyType)),
+				v.Currency,
+				v.Id,
 				v.Id,
 			)
 
