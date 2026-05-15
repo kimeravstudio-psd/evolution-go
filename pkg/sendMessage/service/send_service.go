@@ -185,6 +185,8 @@ type Button struct {
 	PhoneNumber string `json:"phoneNumber,omitempty" example:"+5582988898565"`
 	// ISO currency code for type=pix (e.g. BRL).
 	Currency    string `json:"currency,omitempty" example:"BRL"`
+	// Payment amount for type=pix using the same minor unit as the native payload. With offset 1000, 10000 = R,00.
+	Amount      int64  `json:"amount,omitempty" example:"10000"`
 	// Merchant display name shown on the Pix sheet.
 	Name        string `json:"name,omitempty" example:"Minha Loja"`
 	// Pix key type. One of: phone, email, cpf, cnpj, random.
@@ -1790,9 +1792,9 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 				],
 				"currency":"%s",
 				"total_amount":{
-					"value":0,
-					"offset":1000
-				},
+										"value":%d,
+										"offset":1000
+									},
 				"order_request_id":"%s",
 				"order":{
 					"status":"payment_requested",
@@ -1801,18 +1803,18 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 							"quantity":1,
 							"retailer_id":"%s",
 							"amount":{
-								"offset":1000,
-								"value":0
-							},
+												"offset":1000,
+												"value":%d
+											},
 							"name":"Pagamento PIX",
 							"isCustomItem":true,
 							"isQuantitySet":true
 						}
 					],
 					"subtotal":{
-						"value":0,
-						"offset":1000
-					}
+										"value":%d,
+										"offset":1000
+									}
 				}
 			}`,
 				v.Id,
@@ -1820,8 +1822,11 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 				v.Key,
 				strings.ToUpper(mapKeyType(v.KeyType)),
 				v.Currency,
+				v.Amount,
 				v.Id,
 				v.Id,
+				v.Amount,
+				v.Amount,
 			)
 
 		default:
