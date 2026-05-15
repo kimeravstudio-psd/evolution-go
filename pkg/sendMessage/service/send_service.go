@@ -214,6 +214,8 @@ type ButtonStruct struct {
 	Description  string       `json:"description" example:"Confira as condicoes abaixo"`
 	// Footer text (required).
 	Footer       string       `json:"footer" example:"Evolution GO"`
+	// Optional image URL for template_image_legacy mode.
+	ImageURL     string       `json:"imageUrl,omitempty"`
 	// Buttons array. See combination rules on the parent type description.
 	Buttons      []Button     `json:"buttons"`
 	// Typing delay (milliseconds) applied before sending the message.
@@ -1731,6 +1733,99 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 		if len(data.Buttons) > 1 {
 			return nil, errors.New("pix não pode combinar")
 		}
+	}
+
+	templateImageLegacyCount := 0
+	for _, v := range data.Buttons {
+		if strings.ToLower(v.Type) == "template_image_legacy" {
+			templateImageLegacyCount++
+		}
+	}
+
+	if templateImageLegacyCount > 0 {
+		if templateImageLegacyCount != len(data.Buttons) {
+			return nil, errors.New("não misturar template_image_legacy com outros tipos")
+		}
+		if templateImageLegacyCount > 3 {
+			return nil, errors.New("máximo de 3 botões template_image_legacy")
+		}
+		if strings.TrimSpace(data.ImageURL) == "" {
+			return nil, errors.New("imageUrl é obrigatório para template_image_legacy")
+		}
+
+		resp, err := http.Get(data.ImageURL)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		fileData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		mime, _ := mimetype.DetectReader(bytes.NewReader(fileData))
+		mimeType := mime.String()
+		if mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/webp" {
+			return nil, fmt.Errorf("invalid image format: %s", mimeType)
+		}
+		if mimeType == "image/webp" {
+			mimeType = "image/jpeg"
+		}
+
+		uploaded, err := client.Upload(context.Background(), fileData, whatsmeow.MediaImage)
+		if err != nil {
+			return nil, err
+		}
+
+		imageMessage := &waE2E.ImageMessage{
+			URL:           proto.String(uploaded.URL),
+			DirectPath:    proto.String(uploaded.DirectPath),
+			MediaKey:      uploaded.MediaKey,
+			Mimetype:      proto.String(mimeType),
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    proto.Uint64(uint64(len(fileData))),
+		}
+
+		hydratedButtons := []*waE2E.HydratedTemplateButton{}
+		for i, v := range data.Buttons {
+			idx := uint32(i + 1)
+			hydratedButtons = append(hydratedButtons, &waE2E.HydratedTemplateButton{
+				Index: proto.Uint32(idx),
+				HydratedButton: &waE2E.HydratedTemplateButton_QuickReplyButton{
+					QuickReplyButton: &waE2E.HydratedTemplateButton_HydratedQuickReplyButton{
+						DisplayText: proto.String(v.DisplayText),
+						ID:          proto.String(v.Id),
+					},
+				},
+			})
+		}
+
+		template := &waE2E.TemplateMessage_HydratedFourRowTemplate{
+			Title: &waE2E.TemplateMessage_HydratedFourRowTemplate_ImageMessage{
+				ImageMessage: imageMessage,
+			},
+			HydratedContentText: proto.String(data.Description),
+			HydratedFooterText:  proto.String(data.Footer),
+			HydratedButtons:     hydratedButtons,
+		}
+
+		msg := &waE2E.Message{
+			TemplateMessage: &waE2E.TemplateMessage{
+				Format: &waE2E.TemplateMessage_HydratedFourRowTemplate_{
+					HydratedFourRowTemplate: template,
+				},
+				HydratedTemplate: template,
+			},
+		}
+
+		return s.SendMessage(instance, msg, "InteractiveMessage", &SendDataStruct{
+			Number:    data.Number,
+			Delay:     data.Delay,
+			FormatJid: data.FormatJid,
+			Quoted:    data.Quoted,
+		})
 	}
 
 	templateLegacyCount := 0
