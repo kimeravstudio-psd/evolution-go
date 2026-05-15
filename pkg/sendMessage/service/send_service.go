@@ -1615,7 +1615,7 @@ func (s *sendService) SendSticker(data *StickerStruct, instance *instance_model.
 }
 
 func (s *sendService) SendLocation(data *LocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
-	_, err := s.ensureClientConnected(instance.Id)
+	client, err := s.ensureClientConnected(instance.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1644,7 +1644,7 @@ func (s *sendService) SendLocation(data *LocationStruct, instance *instance_mode
 }
 
 func (s *sendService) SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
-	_, err := s.ensureClientConnected(instance.Id)
+	client, err := s.ensureClientConnected(instance.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1696,7 +1696,7 @@ func mapKeyType(keyType string) string {
 }
 
 func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
-	_, err := s.ensureClientConnected(instance.Id)
+	client, err := s.ensureClientConnected(instance.Id)
 	log.Println("🔥 BUILD NOVO ATIVO 🔥")
 
 	if err != nil {
