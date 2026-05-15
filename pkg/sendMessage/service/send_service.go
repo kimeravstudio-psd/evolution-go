@@ -1769,7 +1769,7 @@ func (s *sendService) SendButton(data *ButtonStruct, instance *instance_model.In
 			},
 		}
 
-		return s.SendMessage(instance, msg, "ButtonsMessage", &SendDataStruct{
+		return s.SendMessage(instance, msg, "InteractiveMessage", &SendDataStruct{
 			Number:    data.Number,
 			Delay:     data.Delay,
 			FormatJid: data.FormatJid,
